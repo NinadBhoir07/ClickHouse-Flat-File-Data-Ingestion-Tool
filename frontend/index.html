@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Data Ingestion Tool</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <h2>Flat File Ingestion</h2>
+    <form id="flatFileForm">
+        <label for="file_path">Flat File Path:</label>
+        <input type="text" id="file_path" name="file_path"><br><br>
+        <label for="delimiter">Delimiter (e.g., , or ;):</label>
+        <input type="text" id="delimiter" name="delimiter"><br><br>
+        <button type="button" onclick="connectFlatFile()">Load Flat File Columns</button>
+        <button type="button" onclick="previewFlatFile()">Preview Flat File</button>
+    </form>
+
+    <h2>ClickHouse Configuration</h2>
+    <form id="clickHouseForm">
+        <label for="host">Host:</label>
+        <input type="text" id="host" name="host"><br><br>
+        <label for="port">Port:</label>
+        <input type="text" id="port" name="port"><br><br>
+        <label for="database">Database:</label>
+        <input type="text" id="database" name="database"><br><br>
+        <label for="user">User:</label>
+        <input type="text" id="user" name="user"><br><br>
+        <label for="token">JWT Token:</label>
+        <input type="text" id="token" name="token"><br><br>
+        <label for="table">Target Table:</label>
+        <input type="text" id="table" name="table"><br><br>
+        <button type="button" onclick="connectClickHouse()">Load ClickHouse Tables</button>
+    </form>
+
+    <h2>Multi-Table Join (ClickHouse)</h2>
+    <textarea id="join_tables" placeholder="Enter table names separated by commas"></textarea><br><br>
+    <input type="text" id="join_condition" placeholder="JOIN condition (e.g., table1.id = table2.id)" /><br><br>
+    <button onclick="generateJoin()">Generate JOIN Query</button>
+    <p id="join_result"></p>
+
+    <br>
+    <button type="button" onclick="startIngestion()">Start Ingestion to ClickHouse</button>
+
+    <progress id="ingestProgress" value="0" max="100" style="width: 100%; display: none;"></progress>
+
+    <div id="result"></div>
+
+    <script>
+        function connectFlatFile() {
+            const filePath = document.getElementById("file_path").value;
+            const delimiter = document.getElementById("delimiter").value;
+
+            fetch("/connect/flatfile", {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_path: filePath, delimiter: delimiter })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById("result").innerText = "Flat File Columns: " + (data.columns || data.error);
+                });
+        }
+
+        function previewFlatFile() {
+            const filePath = document.getElementById("file_path").value;
+            const delimiter = document.getElementById("delimiter").value;
+
+            fetch("/preview/flatfile", {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_path: filePath, delimiter: delimiter })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    const preview = data.preview || data.error;
+                    document.getElementById("result").innerText = "Preview:" + preview.join("\n");
+                });
+        }
+
+        function connectClickHouse() {
+            const host = document.getElementById("host").value;
+            const port = document.getElementById("port").value;
+            const database = document.getElementById("database").value;
+            const user = document.getElementById("user").value;
+            const token = document.getElementById("token").value;
+
+            fetch("/connect/clickhouse", {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ host, port, database, user, token })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById("result").innerText = "ClickHouse Tables: " + (data.tables || data.error);
+                });
+        }
+
+        function generateJoin() {
+            const tables = document.getElementById("join_tables").value.split(",").map(t => t.trim());
+            const condition = document.getElementById("join_condition").value;
+
+            fetch("/generate-join-query", {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tables, condition })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById("join_result").innerText = data.join_query || data.error;
+                });
+        }
+
+        function startIngestion() {
+            const clickhouse = {
+                host: document.getElementById("host").value,
+                port: document.getElementById("port").value,
+                database: document.getElementById("database").value,
+                user: document.getElementById("user").value,
+                token: document.getElementById("token").value,
+                table: document.getElementById("table").value,
+            };
+
+            const flatfile = {
+                file_path: document.getElementById("file_path").value,
+                delimiter: document.getElementById("delimiter").value
+            };
+
+            document.getElementById("ingestProgress").style.display = "block";
+            let progress = 0;
+            const interval = setInterval(() => {
+                if (progress < 90) {
+                    progress += 5;
+                    document.getElementById("ingestProgress").value = progress;
+                }
+            }, 300);
+
+            fetch("/ingest/clickhouse", {
+                method: "POST",
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clickhouse, flatfile })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    clearInterval(interval);
+                    document.getElementById("ingestProgress").value = 100;
+                    document.getElementById("result").innerText = "Records Ingested: " + (data.records_ingested || data.error);
+                });
+        }
+    </script>
+</body>
+
+</html>
